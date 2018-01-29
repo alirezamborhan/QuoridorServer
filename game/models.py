@@ -17,13 +17,17 @@ class Waiter(models.Model):
     requested_players = models.CharField(max_length=4)
 
 class TwoPlayerGame(models.Model):
+    game_id = models.IntegerField(primary_key=True)
     player1 = models.OneToOneField(User, on_delete=models.CASCADE)
     player2 = models.OneToOneField(User, on_delete=models.CASCADE)
     player1_walls = models.IntegerField()
     player2_walls = models.IntegerField()
-    main_grid = models.CharField(max_length=504)
-    wallh_grid = models.CharField(max_length=450)
-    wallv_grid = models.CharField(max_length=450)
+    main_grid = models.CharField(max_length=270)
+    wallh_grid = models.CharField(max_length=240)
+    wallv_grid = models.CharField(max_length=240)
+    wallfills_grid = models.CharField(max_length=210)
+    last_status = models.CharField(max_length=500)
+    turn = models.OneToOneField(User, on_delete=models.CASCADE)
 
 class FourPlayerGame(TwoPlayerGame):
     player3 = models.OneToOneField(User, on_delete=models.CASCADE)

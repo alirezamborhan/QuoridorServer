@@ -97,7 +97,17 @@ def signin(request):
     return HttpResponse("You are now logged in, %s." % user.name)
 
 
-def check_waitlist(players):
+def logout(request):
+    """Log out of the server."""
+    # Check if user is logged in at all.
+    if not request.session.has_key("username"):
+        return HttpResponseForbidden("Error: You are not logged in.")
+
+    request.session.clear()
+    return HttpResponse("You have logged out.")
+
+
+def _check_waitlist(players):
     """Checks to see if there are enough players
 to start a game. Empties the waitlist afterwards.
 """
@@ -107,16 +117,15 @@ to start a game. Empties the waitlist afterwards.
     return False
 
 def two_or_four(request):
-    """Function to choose the number of players."""
-    if request.method != "POST":
-        return HttpResponseBadRequest("Error: Send your data via POST.")
-    post = request.POST.dict()
-
+    """Page to choose the number of players."""
     # Check permission.
     if not request.session.has_key("username"):
         return HttpResponseForbidden("Error: You are not logged in.")
 
     # Check data validity.
+    if request.method != "POST":
+        return HttpResponseBadRequest("Error: Send your data via POST.")
+    post = request.POST.dict()
     if (set(post.keys()) != {"players"}
         or (post["players"] != "two" and post["players"] != "four")
 ):
@@ -125,6 +134,6 @@ def two_or_four(request):
     session["requested_players"] = post["players"]
     Waiter.objects.create(user=User.objects.get(username=session["username"]),
                           requested_players=post["players"])
-    if check_waitlist(post["players"]):
+    if _check_waitlist(post["players"]):
         # Start a game
         pass
