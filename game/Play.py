@@ -10,7 +10,7 @@ from CheckMove import check_move
 
 
 def new(users, requested_players):
-    """Create a new game."""
+    """Create a new game and return the game ID."""
     main_grid = [[0]*9]*9
     wallv_grid = [[0]*9]*8
     wallh_grid = [[0]*8]*9
@@ -64,20 +64,16 @@ def _do_move(game, main_grid, wallh_grid, wallv_grid, wallfills_grid, move):
     """Apply the game move."""
     pass
 
-def play(game_id, requested_players, move):
+def play(game, requested_players, move):
     """Play a move."""
     # Get game data.
-    if requested_players == "two":
-        game = TwoPlayerGame.objects.get(game_id=game_id)
-    if requested_players == "four":
-        game = FourPlayerGame.objects.get(game_id=game_id)
     main_grid = json.loads(game.main_grid)
     wallh_grid = json.loads(game.wallh_grid)
     wallv_grid = json.loads(game.wallv_grid)
     wallfills_grid = json.loads(game.wallfills_grid)
 
-    # Check to see if the move is legal.
+    # Check to see if the move is legal. Do it if so.
     if check_move(main_grid, wallh_grid, wallv_grid, wallfills_grid, move):
-        _do_move(game, main_grid, wallh_grid, wallv_grid, wallfills_grid, move)
+        return _do_move(game, main_grid, wallh_grid, wallv_grid, wallfills_grid, move)
     else:
-        pass
+        return "Your move is not legal."
