@@ -1,12 +1,14 @@
 import datetime
+import json
 from passlib.hash import pbkdf2_sha256
 
 from django.shortcuts import render
 from django.contrib.sessions.models import Session
+from django.contrib.sessions.backends.base import SessionBase
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 
 from game.models import User, Waiter, TwoPlayerGame, FourPlayerGame
-import game.Play
+import game.Play as Play
 
 
 def _is_username_valid(username):
@@ -79,12 +81,15 @@ def signin(request):
     post = request.POST.dict()
     
     # Check data validity.
-    if (set(post.keys()) != {"name", "username", "password"} 
-        or not _is_name_valid(post["name"])
+    if (set(post.keys()) != {"username", "password"}
         or not _is_username_valid(post["username"].lower())
         or not _is_password_valid(post["password"])
 ):
         return HttpResponseBadRequest("Error: Your POST data is corrupted.")
+
+    # Check to see if user exists.
+#    if not User.objects.filter(username=post["username"].lower()):
+#        return HttpResponseForbidden("No such user exists.")
 
     # Get user from database.
     try:
@@ -122,29 +127,38 @@ to start a game. Empties the waitlist afterwards.
         return True
     return False
 
-def _add_to_new_game(game_id, users):
-    for user in users:
-        session = Session.objects.get(username=user.username)
+def _add_to_new_game(game_id, session_keys, encode, requested_players):
+    for session_key in session_keys:
+        the_session = Session.objects.get(session_key=session_key)
+        session = the_session.get_decoded()
+        if "requested_players" not in session:
+            session["requested_players"] = requested_players
         session["game_id"] = game_id
+        the_session.session_data = encode(session)
+        the_session.save()
 
 def _update_waitlist():
+    """Deletes excessive data from the waitlist."""
     pass
 
-def _check_and_begin():
+def _check_and_begin(encode, requested_players=""):
     """Checks waitlist and starts a new game if there are enough players."""
     _update_waitlist()
 
     for players in ("two", "four"):
-        if _check_waitlist(players):
-            # Start a new game.
-            waiters = Waiter.objects.filter(requested_players=players)
-            users = []
-            for w in waiters:
-                users.append(w.user)
-            game_id = Play.new(users, requested_players)
-            _add_to_new_game(game_id, users)
-            # Empty the waitlist.
-            waiters.delete()
+        waiters = Waiter.objects.filter(requested_players=players)
+        if len(waiters) != {"four": 4, "two": 2}[players]:
+            continue
+        # Start a new game.
+        users = []
+        session_keys = []
+        for w in waiters:
+            users.append(w.user)
+            session_keys.append(w.session_key)
+        game_id = Play.new(users, players)
+        _add_to_new_game(game_id, session_keys, encode, requested_players)
+        # Empty the waitlist.
+        waiters.delete()
 
 def two_or_four(request):
     """Page to choose the number of players."""
@@ -162,31 +176,33 @@ def two_or_four(request):
         return HttpResponseBadRequest("Error: Your POST data is corrupted.")
 
     # Add information to session.
-    session["requested_players"] = post["players"]
+    request.session["requested_players"] = post["players"]
 
     # Add to waitlist.
-    Waiter.objects.create(user=User.objects.get(username=session["username"]),
+    Waiter.objects.create(user=User.objects.get(username=request.session["username"]),
+                          session_key=request.session.session_key,
                           requested_players=post["players"])
 
-    _check_and_begin()
+#    _check_and_begin(request.session.encode, requested_players=post["players"])
+    return HttpResponse("You've been added to the waitlist.")
 
 
 def _is_move_format_valid(move):
     """Checks the format for the received data for a game move.
 A proper datum would be a dictionary similar to:
 {"type": "move", "x": 1, "y": 4}
-Which would move the player to the cell at 1, 4.
+Which would move the player to the cell at (1, 4).
 Or it could be a dictionary similar to:
 {"type": "wall", "direction": "h", "x": 7, "y": 3}
-Which would place a horizontal wall with the northwest corner at 7, 3.
+Which would place a horizontal wall with the northwest corner at (7, 3).
 Or it could be a dictionary similar to:
 {"type": "wall", "direction": "v", "x": 6, "y": 3}
-Which would place a vertical wall with the northwest corner at 6, 3.
+Which would place a vertical wall with the northwest corner at (6, 3).
 """
     if (not isinstance(move, dict)
-        or not (set(move.keys) == {"type", "x", "y"}
-                or set(move.keys) == {"type", "direction", "x", "y"}
-):
+        or not (set(move.keys()) == {"type", "x", "y"}
+                or set(move.keys()) == {"type", "direction", "x", "y"}
+)):
           return False
     if (move["type"] == "move"
         and len(move) == 3
@@ -214,43 +230,48 @@ If not, check waitlist and start a new game.
 """
     # Check permission.
     if not request.session.has_key("username"):
-        return HttpResponseForbidden("Error: You are not logged in.")
+        return HttpResponseForbidden(
+            json.dumps({"error": "You are not logged in."}))
 
     # Check to see if number of players is decided.
     if not request.session.has_key("requested_players"):
         return HttpResponseBadRequest(
-            "Error: You have not chosen the number of players.")
+            json.dumps({"error": "You have not chosen the number of players."}))
 
     # Check to see if game has started.
     if not request.session.has_key("game_id"):
-        _check_and_begin()
-        return HttpResponse("Waiting for other players to join...")
+        _check_and_begin(request.session.encode)
+        return HttpResponse(
+            json.dumps({"status": "Waiting for other players to join...",
+                        "waiting": True}))
     
     # Get the game.
-    if requested_players == "two":
+    if request.session["requested_players"] == "two":
         game = TwoPlayerGame.objects.get(game_id=request.session["game_id"])
-    if requested_players == "four":
+    if request.session["requested_players"] == "four":
         game = FourPlayerGame.objects.get(game_id=request.session["game_id"])
 
     # Check turn.
     if game.turn.username != request.session["username"]:
-        return HttpResponse(game.last_status)
+        return HttpResponse(game.last_status + "\n"
+                + game.main_grid + "\n" + game.wallh_grid + "\n"
+                + game.wallv_grid + "\n" + game.wallfills_grid)
 
     # Check to see if any move has been made.
     if request.method != "POST":
-        return HttpResponse(game.last_status)
+        return HttpResponse(game.last_status + "\n"
+                + game.main_grid + "\n" + game.wallh_grid + "\n"
+                + game.wallv_grid + "\n" + game.wallfills_grid)
     post = request.POST.dict()
 
     # Check data validity.
     if (set(post.keys()) != {"move"} 
         or not _is_move_format_valid(json.loads(post["move"]))
 ):
-        return HttpResponseBadRequest("Error: Your POST data is corrupted.")
+        return HttpResponseBadRequest(
+            json.dumps({"error": "Your POST data is corrupted."}))
 
     # Play the move.
-    return HttpResponse(
-        Play.play(
-            game,
-            request.session["requested_players"],
-            json.loads(post["move"])
-))
+    return Play.play(game,
+                     request.session["requested_players"],
+                     json.loads(post["move"]))
