@@ -11,6 +11,8 @@ class User(models.Model):
     four_player_wins = models.IntegerField()
     four_player_losses = models.IntegerField()
     total_score = models.IntegerField()
+    two_player_game_id = models.IntegerField(null=True, blank=True)
+    four_player_game_id = models.IntegerField(null=True, blank=True)
     def __str__(self):
         return self.username
 
@@ -24,9 +26,11 @@ class Waiter(models.Model):
 class TwoPlayerGame(models.Model):
     game_id = models.IntegerField(primary_key=True)
     player1 = models.OneToOneField(User, on_delete=models.CASCADE,
-                                   related_name="first_player")
+                                   related_name="first_player",
+                                   null=True, blank=True)
     player2 = models.OneToOneField(User, on_delete=models.CASCADE,
-                                   related_name="second_player")
+                                   related_name="second_player",
+                                   null=True, blank=True)
     player1_walls = models.IntegerField()
     player2_walls = models.IntegerField()
     main_grid = models.CharField(max_length=270)
@@ -36,13 +40,16 @@ class TwoPlayerGame(models.Model):
     last_status = models.CharField(max_length=500)
     turn = models.OneToOneField(User, on_delete=models.CASCADE,
                                 related_name="turn_player")
+    started = models.BooleanField(default=False)
     def __str__(self):
         return str(self.game_id)
 
 class FourPlayerGame(TwoPlayerGame):
     player3 = models.OneToOneField(User, on_delete=models.CASCADE,
-                                   related_name="third_player")
+                                   related_name="third_player",
+                                   null=True, blank=True)
     player4 = models.OneToOneField(User, on_delete=models.CASCADE,
-                                   related_name="fourth_player")
+                                   related_name="fourth_player",
+                                   null=True, blank=True)
     player3_walls = models.IntegerField()
     player4_walls = models.IntegerField()
