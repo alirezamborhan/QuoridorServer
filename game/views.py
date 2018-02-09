@@ -7,7 +7,7 @@ from django.contrib.sessions.models import Session
 from django.contrib.sessions.backends.base import SessionBase
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 
-from game.models import User, Waiter, TwoPlayerGame, FourPlayerGame
+from game.models import User, TwoPlayerGame, FourPlayerGame
 import game.Play as Play
 
 
@@ -260,6 +260,23 @@ If not, check waitlist and start a new game.
     if not game.started:
         return HttpResponse(game.last_status)
 
+    # Check to see if the game has been won by someone.
+    if "winner" in json.loads(game.last_status):
+        response = HttpResponse(game.last_status + "\n"
+                + game.main_grid + "\n" + game.wallh_grid + "\n"
+                + game.wallv_grid + "\n" + game.wallfills_grid
+                                + "\n" + json.dumps(dict()))
+        Play.stop(game, requested_players,
+                  request.session["username"],
+                  already_stopped=True)
+        return response
+
+    if "stopped" in json.loads(game.last_status):
+        response = Play.stop(game, requested_players,
+                             request.session["username"],
+                             already_stopped=True)
+        return response
+
     # Check turn.
     if game.turn.username != request.session["username"]:
         return HttpResponse(game.last_status + "\n"
@@ -286,3 +303,27 @@ If not, check waitlist and start a new game.
     return Play.play(game,
                      requested_players,
                      json.loads(post["move"]))
+
+def leave(request):
+    """To stop and leave the game.
+If one player chooses to leave the game, the whole game
+will be stopped and other users will be notified.
+"""
+    # Check permission.
+    if not request.session.has_key("username"):
+        return HttpResponseForbidden(
+            json.dumps({"error": "You are not logged in."}))
+
+    # Check to see if game has been chosen.
+    (game, requested_players) = Play.get_game(request.session["username"])
+    if not game:
+        return HttpResponseBadRequest(
+            json.dumps({"error": "You have not chosen a game."}))
+
+    # Stops the game.
+    last_status = json.loads(game.last_status)
+    already_stopped = ("winner" in last_status or "stopped" in last_status)
+    response = Play.stop(game, requested_players, request.session["username"],
+                            already_stopped=already_stopped)
+
+    return response

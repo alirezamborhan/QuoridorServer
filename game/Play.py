@@ -7,7 +7,7 @@ from django.contrib.sessions.models import Session
 from game.models import TwoPlayerGame, FourPlayerGame, User
 from django.http import HttpResponse, HttpResponseNotAllowed
 
-from game.CheckMove import check_move
+from game.CheckMove import check_move, check_win
 
 
 def get_game(username):
@@ -140,6 +140,37 @@ def _do_move(game, main_grid, wallh_grid, wallv_grid,
             game.turn = game.player1
 
     last_status = json.dumps({"status": "playing", "turn": game.turn.username})
+
+    # Check to see if the game has been won. Apply scores if so.
+    if check_win(main_grid, player):
+        if requested_players == "two":
+            players = {1: game.player1, 2: game.player2}
+            winner = players[player]
+            winner.two_player_wins += 1
+            winner.total_score += 1
+            winner.save()
+            for p in players.values():
+                if p == winner:
+                    continue
+                p.two_player_losses += 1
+                p.total_score -= 1
+                p.save()
+        if requested_players == "four":
+            players = {1: game.player1, 2: game.player2,
+                      3: game.player3, 4: game.player4}
+            winner = players[player]
+            winner.four_player_wins += 1
+            winner.total_score += 3
+            winner.save()
+            for p in players.values():
+                if p == winner:
+                    continue
+                p.four_player_losses += 1
+                p.total_score -= 1
+                p.save()
+        last_status = json.dumps({"winner": winner.username,
+                                  "status": "%s has won the game!"
+                                  % winner.username.capitalize()})
     
     # Update database.
     game.last_status = last_status
@@ -155,11 +186,16 @@ def _do_move(game, main_grid, wallh_grid, wallv_grid,
 
 def play(game, requested_players, move):
     """Play a move."""
-    # Get game data.
+    # Extract game data.
     main_grid = json.loads(game.main_grid)
     wallh_grid = json.loads(game.wallh_grid)
     wallv_grid = json.loads(game.wallv_grid)
     wallfills_grid = json.loads(game.wallfills_grid)
+    if requested_players == "two":
+        walls = {1: game.player1_walls, 2: game.player2_walls}
+    if requested_players == "four":
+        walls = {1: game.player1_walls, 2: game.player2_walls,
+                 3: game.player3_walls, 4: game.player4_walls}
     if game.turn == game.player1:
         player = 1
     if game.turn == game.player2:
@@ -172,7 +208,7 @@ def play(game, requested_players, move):
 
     # Check to see if the move is legal. Do it if so.
     if check_move(main_grid, wallh_grid, wallv_grid,
-                  wallfills_grid, move, player):
+                  wallfills_grid, move, player, walls):
         response = _do_move(game, main_grid, wallh_grid, wallv_grid,
                         wallfills_grid, move, player, requested_players)
         return HttpResponse(response)
@@ -183,3 +219,36 @@ def play(game, requested_players, move):
                      + "\n" + game.wallv_grid + "\n" + game.wallfills_grid
                      + "\n" + get_walls(game, requested_players))
         return HttpResponse(response)
+
+def stop(game, requested_players, username, already_stopped=False):
+    """Function to stop and leave the game.
+If the game has already been stopped, remove
+the player from the game.
+"""
+    user = User.objects.get(username=username)
+    user.two_player_game_id = None
+    user.four_player_game_id = None
+    user.save()
+    if game.player1 == user:
+        game.player1 = None
+    elif game.player2 == user:
+        game.player2 = None
+    elif game.player3 == user:
+        game.player3 = None
+    elif game.player4 == user:
+        game.player4 = None
+    if not already_stopped:
+        game.turn = None
+        game.last_status = json.dumps({"stopped": True,
+                                "status": ("The game has been stopped by %s"
+                                                % username)})
+    last_status = game.last_status
+    if ((requested_players == "two" and game.player1 == None and
+         game.player2 == None) or
+        (requested_players == "four" and game.player1 == None and
+         game.player2 == None and game.player3 == None and
+         game.player4 == None)):
+            game.delete()
+    else:
+        game.save()
+    return HttpResponse(last_status)

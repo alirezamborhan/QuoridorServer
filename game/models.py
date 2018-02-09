@@ -16,13 +16,6 @@ class User(models.Model):
     def __str__(self):
         return self.username
 
-class Waiter(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    requested_players = models.CharField(max_length=4)
-    session_key = models.CharField(max_length=100)
-    def __str__(self):
-        return self.user.username
-
 class TwoPlayerGame(models.Model):
     game_id = models.IntegerField(primary_key=True)
     player1 = models.OneToOneField(User, on_delete=models.CASCADE,
@@ -39,7 +32,8 @@ class TwoPlayerGame(models.Model):
     wallfills_grid = models.CharField(max_length=210)
     last_status = models.CharField(max_length=500)
     turn = models.OneToOneField(User, on_delete=models.CASCADE,
-                                related_name="turn_player")
+                                related_name="turn_player",
+                                null=True, blank=True)
     started = models.BooleanField(default=False)
     def __str__(self):
         return str(self.game_id)
