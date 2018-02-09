@@ -112,8 +112,9 @@ def logout(request):
     """Log out of the server."""
     # Check if user is logged in at all.
     if not request.session.has_key("username"):
-        return HttpResponseForbidden("Error: You are not logged in.")
+        return HttpResponse("Error: You are not logged in.")
 
+    # Clear session.
     request.session.clear()
     return HttpResponse("You have logged out.")
 
@@ -327,3 +328,32 @@ will be stopped and other users will be notified.
                             already_stopped=already_stopped)
 
     return response
+
+def scores(request):
+    """Give scores for all users."""
+    # Check permission.
+    if not request.session.has_key("username"):
+        return HttpResponseForbidden(
+            json.dumps({"error": "You are not logged in."}))
+
+    # Get scores.
+    response = ""
+    for user in User.objects.all():
+        user_info = "\n%s %s %s %s %s %s" % (user.username.ljust(11),
+                                             str(user.two_player_wins).ljust(14),
+                                             str(user.two_player_losses).ljust(8),
+                                             str(user.four_player_wins).ljust(14),
+                                             str(user.four_player_losses).ljust(8),
+                                             str(user.total_score).ljust(5),)
+        if user.username != request.session["username"]:
+            response += user_info
+        else:
+            response = user_info + "\n" + response
+    first_line = "%s %s %s %s %s %s\n" % (("Username").ljust(11),
+                                          ("2 player wins").ljust(14),
+                                          ("losses").ljust(8),
+                                          ("4 player wins").ljust(14),
+                                          ("losses").ljust(8),
+                                          ("Score").ljust(5))
+    response = first_line + response
+    return HttpResponse(response)
