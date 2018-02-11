@@ -66,7 +66,27 @@ def _check_move_conditions(x, y, px, py, wallh_grid,
         (y == py+1 and x == px-1 and main_grid[py][px-1] > 0 and
          wallv_grid[py][px] == 0 and
          (px == 1 or wallv_grid[py][px-2] == 1 or main_grid[py][px-2] > 0) and
-         wallh_grid[py][px-1] == 0)
+         wallh_grid[py][px-1] == 0) or
+        # Jump northeast when path blocked twice above
+        (y == py-1 and x == px+1 and main_grid[py-1][px] > 0 and
+         wallh_grid[py-1][px] == 0 and
+         (py == 1 or wallh_grid[py-2][px] == 1 or main_grid[py-2][px] > 0) and
+         wallv_grid[py-1][px] == 0) or
+        # Jump northeast when path blocked twice on right
+        (y == py-1 and x == px+1 and main_grid[py][px+1] > 0 and
+         wallv_grid[py][px] == 0 and
+         (px == 7 or wallv_grid[py][px+1] == 1 or main_grid[py][px+2] > 0) and
+         wallh_grid[py-1][px+1] == 0) or
+        # Jump southeast when path blocked twice below
+        (y == py+1 and x == px+1 and main_grid[py+1][px] > 0 and
+         wallh_grid[py][px] == 0 and
+         (py == 7 or wallh_grid[py+1][px] == 1 or main_grid[py+2][px] > 0) and
+         wallv_grid[py+1][px] == 0) or
+        # Jump southeast when path blocked twice on right
+        (y == py+1 and x == px+1 and main_grid[py][px+1] > 0 and
+         wallv_grid[py][px] == 0 and
+         (px == 7 or wallv_grid[py][px+1] == 1 or main_grid[py][px+2] > 0) and
+         wallh_grid[py][px+1] == 0)
 ):
           return True
     return False
@@ -97,16 +117,20 @@ Returns true if the player's path is blocked.
             (px > 1, px-2, py),
             (px < 7, px+2, py),
             # Jumping when blocked twice
+            (py > 0 and px > 0, px-1, py-1),
+            (py < 8 and px > 0, px-1, py+1),
+            (py > 0 and px < 8, px+1, py-1),
+            (py < 8 and px < 8, px+1, py+1),
 ]:
         if (move[0] and main_grid[move[2]][move[1]] == 0 and
-            _check_move_conditions(move[1], move[2], px, py,
-                                   wallh_grid, wallv_grid, main_grid)):
+              _check_move_conditions(move[1], move[2], px, py,
+                                     wallh_grid, wallv_grid, main_grid)):
             main_grid_copy = deepcopy(main_grid)
             main_grid_copy[py][px] = 0
             main_grid_copy[move[2]][move[1]] = player
             if (main_grid_copy not in checked and
                 not _check_surrounded(main_grid_copy, wallh_grid,
-                                  wallv_grid, player, checked)):
+                                      wallv_grid, player, checked=checked)):
                   return False
     return True
 
@@ -138,7 +162,7 @@ def check_move(main_grid, wallh_grid, wallv_grid,
         if (wallh_grid[y][x] == 0 and wallh_grid[y][x+1] == 0 and
             wallfills_grid[y][x] == 0 and walls[player] > 0 and
             all([not _check_surrounded(main_grid, wallh_grid_copy, wallv_grid,
-                                       p) for p in players])):
+                                       p, checked=list()) for p in players])):
                 return True
 
     if move["type"] == "wall" and move["direction"] == "v":
@@ -148,7 +172,7 @@ def check_move(main_grid, wallh_grid, wallv_grid,
         if (wallv_grid[y][x] == 0 and wallv_grid[y+1][x] == 0 and
             wallfills_grid[y][x] == 0 and walls[player] > 0 and
             all([not _check_surrounded(main_grid, wallh_grid, wallv_grid_copy,
-                                       p) for p in players])):
+                                       p, checked=list()) for p in players])):
                 return True
 
     return False
