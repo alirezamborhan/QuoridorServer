@@ -341,8 +341,13 @@ def scores(request):
     users = User.objects.all()
     users_sorted = list(reversed(
         sorted([[user.total_score, user.username] for user in users])))
+    rank = 0
+    last_score = 0
     for i in range(len(users_sorted)):
-        user_info = "\n%s %s %s" % (str(i+1).ljust(5),
+        if last_score != users_sorted[i][0]:
+            rank = i+1
+            last_score = users_sorted[i][0]
+        user_info = "\n%s %s %s" % (str(rank).ljust(5),
                                     users_sorted[i][1].ljust(14),
                                     str(users_sorted[i][0]).ljust(5))
         response += user_info
